@@ -1,0 +1,354 @@
+---
+title: "Untitled"
+author: "Ziyang Gao & Sarah Leong-Fern"
+date: "11/18/2016"
+output: html_document
+---
+get data and only get columns of data that we want
+```{r}
+library(foreign)
+gtd <- read.dta("/Volumes/COURSES/math245-00-f16/Common/Global Terrorism Database gao leong fern/04586-0001-Data.dta")
+View(gtd)
+names(gtd)
+gtd2<- gtd[, c(5, 11, 12, 18, 19, 22, 83)]
+names(gtd2)
+```
+
+clean up this data by removing cases of -99 which in the code means that the researchers don't have that information
+```{r}
+gtd3 <- subset(gtd2, nperps>0 & nmales>0 & nkill>-1 & GWEAPID1>0)
+View(gtd3)
+summary(gtd3)
+```
+
+turn categorical variables into levels
+```{r}
+gtd3$region2 <- factor(gtd3$region, levels = 1:6, labels = c("North America", "Latin America", "Europe", "Middle East/North Africa", "Sub-Saharan Africa/NAF", "Asia"))
+gtd3$victim <- factor(gtd3$entity, levels = 1:22, labels = c("US Diplomat", "US Police/Military", "US Other", "US Unknown", "US Government", "US Political Parties", "US Media", "US Business", "US Transportation", "US Utilities", "Foreign Business", "Domestic Business", "Transportation", "Utilities", "Media", "Diplomat", "Government", "International", "Other", "Police/Military", "Political Party", "Unknown"))
+gtd3$weapon <- factor(gtd3$GWEAPID1, levels = 1:10, labels = c("Explosives", "Firearms", "Fire or firebomb", "Knives & sharp objects", "Chemical agent", "Biological agent", "Remote-detonated explosives", "Filler", "Filler2", "Other"))
+```
+
+merge US victims w/ corresponding other types e.g. merge US Diplomat and Diplomat because US counts are too small
+
+```{r}
+library(reshape)
+gtd3$victim2 <- combine_factor(gtd3$victim, c(1,2,3,4,5,6,7,8,9,10,8,8,9,10,7,1,5,11,3,2,6,4))
+gtd3$victim3 <- factor(gtd3$victim2, label = c("Diplomat", "Police/Military", "Other", "Unknown", "Government", "Political Parties", "Media", "Business", "Transportation", "Utilities", "International"))
+```
+
+rename for final dataset
+```{r}
+gtd3$region <- gtd3$region2
+gtd3$victim <- gtd3$victim3
+```
+
+final variables: type (1), region (2), victim (9), nperps (4), nkill (6), weapon (12)
+
+```{r}
+gtd4 <- gtd3[, c(1,2,4,6,9,10)]
+View(gtd4)
+```
+
+final data set = gtd4 
+
+refining data set is done, now time for regression
+
+SUMMARY OF VARIABLES
+
+Numerical variables: number of people killed in attack (response variable) & number of terrorists involved in attack (explanatory variable)
+
+```{r}
+library(ggplot2)
+p <- ggplot(gtd4, aes(x = nperps, y = nkill))
+p + geom_point() + labs(title = "number of terrorists vs number of casualties", x = "number of terrorists", y = "number of casualties") + theme(text = element_text(size=15))
+```
+
+```{r}
+#Getting summary statistics
+summary(gtd4$nkill)
+sd(gtd4$nkill)
+summary(gtd4$nperps)
+sd(gtd4$nperps)
+```
+
+```{r}
+#should we log #casualties & #terrorists?
+temp <- gtd4[c(gtd4$nperps < 250),]
+temp <- temp[c(temp$nkill <90),]
+p <- ggplot(temp, aes(x = nperps, y = nkill))
+p + geom_point() + labs(title = "number of terrorists vs number of casualties", x = "number of terrorists", y = "number of casualties") + theme(text = element_text(size=15))
+```
+```{r}
+temp <- gtd4[c(gtd4$nperps < 100),]
+temp <- temp[c(temp$nkill < 40),]
+p <- ggplot(temp, aes(x = nperps, y = nkill))
+p + geom_point() + labs(title = "number of terrorists vs number of casualties", x = "number of terrorists", y = "number of casualties") + theme(text = element_text(size=15))
+```
+```{r}
+
+#yep, needs to be logged
+gtd4$logkill <- ifelse(gtd4$nkill==0, 0, log(gtd4$nkill)) 
+gtd4$logperps <- ifelse(gtd4$nperps==0, 0, log(gtd4$nperps)) 
+
+p <- ggplot(gtd4, aes(x = logperps, y = logkill))
+p + geom_point() + labs(title = "number of terrorists vs number of casualties", x = "logged number of terrorists", y = "logged number of casualties") + theme(text = element_text(size=15))
+
+```
+
+Categorical variables: region of the world attack took place in (explanatory variable), type of attack (explanatory variable), type of weapon used in attack (explanatory variable), & type of target (explanatory variable)
+
+```{r}
+#REGION
+summary(gtd4$region)
+p <- ggplot(gtd4, aes(x = region, y = logkill))
+p + geom_boxplot() + labs(title = "logged number of casualties by region", x = "region of the world", y = "logged number of casualties")
+```
+```{r}
+
+#labels are overlapping in graph, so rename
+levels(gtd4$region)[levels(gtd4$region)=="Middle East/North Africa"] <- "Middle East/NA"
+levels(gtd4$region)[levels(gtd4$region)=="Sub-Saharan Africa/NAF"] <- "SS Africa"
+p <- ggplot(gtd4, aes(x = region, y = logkill))
+p + geom_boxplot() + labs(title = "logged number of casualties by region", x = "region of the world", y = "logged number of casualties")
+
+#labels too tiny
+p + geom_boxplot() + labs(title = "logged number of casualties by region", x = "region of the world", y = "logged number of casualties") + theme(text = element_text(size=15))
+levels(gtd4$region)[levels(gtd4$region)=="North America"] <- "N America"
+p <- ggplot(gtd4, aes(x = region, y = logkill))
+p + geom_boxplot() + labs(title = "logged number of casualties by region", x = "region of the world", y = "logged number of casualties") + theme(text = element_text(size=15))
+
+#TYPE OF ATTACK
+
+
+p <- ggplot(gtd4, aes(x = type, y = logkill))
+p + geom_boxplot() + labs(title = "logged # of casualties by attack type", x = "type of attack", y = "logged number of casualties") + theme(text = element_text(size=15))
+#maiming & assault are by definition not resulting in casualties, so they're not relevant
+gtd4 <- gtd4[c(gtd4$type!="Maiming"), ]
+gtd4 <- gtd4[c(gtd4$type!="Assault"), ]
+p <- ggplot(gtd4, aes(x = type, y = logkill))
+p + geom_boxplot() + labs(title = "logged # of casualties by attack type", x = "type of attack", y = "logged number of casualties") + theme(text = element_text(size=15))
+
+summary(gtd4$type)
+
+
+#WEAPON TYPE
+
+summary(gtd4$weapon)
+p <- ggplot(gtd4, aes(x = weapon, y = logkill))
+p + geom_boxplot() + labs(title = "logged # of casualties by weapon", x = "type of weapon", y = "logged number of casualties") + theme(text = element_text(size=15))
+#labels running into each other, so shorten labels
+levels(gtd4$weapon)[levels(gtd4$weapon)=="Fire or firebomb"] <- "Fire"
+levels(gtd4$weapon)[levels(gtd4$weapon)=="Knives & sharp objects"] <- "Knives"
+p <- ggplot(gtd4, aes(x = weapon, y = logkill))
+p + geom_boxplot() + labs(title = "logged # of casualties by weapon", x = "type of weapon", y = "logged number of casualties") + theme(text = element_text(size=15))
+
+
+#TARGET/VICTIM TYPE
+
+summary(gtd4$victim)
+p <- ggplot(gtd4, aes(x = victim, y = logkill))
+p + geom_boxplot() + labs(title = "logged # of casualties by target", x = "type of target", y = "logged number of casualties") + theme(text = element_text(size=15))
+#too much, split into two graphs & reduce labels
+
+#reduce labels
+levels(gtd4$victim)[levels(gtd4$victim)=="Government"] <- "Govt"
+levels(gtd4$victim)[levels(gtd4$victim)=="Political Parties"] <- "Pol Parties"
+
+
+#graph 1
+temp <- gtd4[c(gtd4$victim=="Diplomat" | gtd4$victim=="Police/Military" | gtd4$victim=="Other" | gtd4$victim=="Unknown" | gtd4$victim=="Govt" | gtd4$victim=="Pol Parties"), ]
+p <- ggplot(temp, aes(x = victim, y = logkill))
+p + geom_boxplot() + labs(title = "logged # of casualties by target", x = "type of target", y = "logged number of casualties") + theme(text = element_text(size=15))
+#graph 2
+temp <- gtd4[c(gtd4$victim=="Media" | gtd4$victim=="Business" | gtd4$victim=="Transportation" | gtd4$victim=="Utilities" | gtd4$victim=="International"), ]
+p <- ggplot(temp, aes(x = victim, y = logkill))
+p + geom_boxplot() + labs(title = "logged # of casualties by target", x = "type of target", y = "logged number of casualties") + theme(text = element_text(size=15))
+```
+
+POISSON TIME
+```{r}
+#starting with all variables
+terror.glm <- glm(nkill ~ logperps + region + type + weapon + victim, data = gtd4, family = poisson)
+summary(terror.glm)
+```
+
+the following, according to the first model, aren't significant: 
+1. Chemical agent (weapon)
+2. Media (victim)
+3. Utilities (victim)
+4. International (victim)
+
+However, we haven't used an interaction term yet.
+```{r}
+#add one interaction term that made sense to have (#of perps would really influence the effectiveness of the Firearms weapon type)
+terror.glm2 <- glm(nkill ~ logperps + region + type + weapon + victim + logperps*weapon, data = gtd4, family = poisson)
+summary(terror.glm2)
+```
+the following, according to the second model, aren't significant:
+
+1. logperps
+2. Bombing (type)
+3. Media (victim)
+4. Utilities (victim)
+5. International (victim)
+6. logperps*Chemical agent (victim)
+
+First, we will get rid of Media (victim), Utilities (victim), and International (victim), because both model 1 and model 2 said they aren't significant.
+
+In order to get rid of those, we have to code all victim/target types as 0/1 on their own:
+
+```{r}
+gtd4$PoliceMilitary <- ifelse(gtd4$victim=="Police/Military", 1, 0)
+gtd4$VictimOther <- ifelse(gtd4$victim=="Other", 1, 0)
+gtd4$Unknown <- ifelse(gtd4$victim=="Unknown", 1, 0)
+gtd4$Govt <- ifelse(gtd4$victim=="Govt", 1, 0)
+gtd4$PolParties <- ifelse(gtd4$victim=="Pol Parties", 1, 0)
+gtd4$Business <- ifelse(gtd4$victim=="Business", 1, 0)
+gtd4$Transportation <- ifelse(gtd4$victim=="Transportation", 1, 0)
+
+terror.glm3 <- glm(nkill ~ logperps + region + type + weapon + logperps*weapon + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = poisson)
+summary(terror.glm3)
+anova(terror.glm3, terror.glm2)
+1-pchisq(5.4055, 3)
+#chi square test returned 0.1444013, so we can keep the reduced model
+```
+
+Now, because of results in all 3 models, let's try getting rid of the weapon Chemical agent:
+```{r}
+gtd4$Firearms <- ifelse(gtd4$weapon=="Firearms", 1, 0)
+gtd4$Fire <- ifelse(gtd4$weapon=="Fire", 1, 0)
+gtd4$Knives <- ifelse(gtd4$weapon=="Knives", 1, 0)
+gtd4$WeaponOther <- ifelse(gtd4$weapon=="Other", 1, 0)
+terror.glm4 <- glm(nkill ~ logperps + region + type + Firearms + Fire + Knives + WeaponOther  + logperps*Firearms + logperps*Fire + logperps*Knives + logperps*WeaponOther + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = poisson)
+summary(terror.glm4)
+anova(terror.glm4, terror.glm3)
+1-pchisq(5.8403, 2)
+#chi square test returned 0.0539256, so we can keep the reduced model
+```
+
+Now, because some models have shown it is not significant, let's try getting rid of the type Bombing:
+```{r}
+gtd4$FacilityAttack <- ifelse(gtd4$type=="Facility Attack", 1, 0)
+gtd4$Hijacking <- ifelse(gtd4$type=="Hijacking", 1, 0)
+gtd4$Kidnapping <- ifelse(gtd4$type=="Kidnapping", 1, 0)
+
+terror.glm5 <- glm(nkill ~ logperps + region + FacilityAttack + Hijacking + Kidnapping + Firearms + Fire + Knives + WeaponOther + logperps*Firearms + logperps*Fire + logperps*Knives + logperps*WeaponOther + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = poisson)
+summary(terror.glm5)
+anova(terror.glm5, terror.glm4)
+1-pchisq(0.82852, 1)
+#chi square test returned 0.3627008, so we can keep the reduced model
+```
+
+Now, because logperps is not significant even though its interaction term with weapon is, let's try getting rid of it:
+
+```{r}
+terror.glm6 <- glm(nkill ~ region + FacilityAttack + Hijacking + Kidnapping + Firearms + Fire + Knives + WeaponOther + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = poisson)
+summary(terror.glm6)
+anova(terror.glm6, terror.glm5)
+1-pchisq(1247.8, 5)
+#chi square test returned 0, so we keep the full model
+```
+
+chi-square results suggests that we should keep logperps in.
+Now we check for overdispersion: 
+
+```{r}
+#residual deviance/degrees of freedom
+summary(terror.glm5) 
+#Residual deviance: 10062  on 3230  degrees of freedom
+10062/3230
+#3.11517 > 1, so we can assume overdispersion
+#we need to use quasipoisson
+terror.glm7 <- glm(nkill ~ logperps + region + FacilityAttack + Hijacking + Kidnapping + Firearms + Fire + Knives + WeaponOther + logperps*Firearms + logperps*Fire + logperps*Knives + logperps*WeaponOther + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = quasipoisson)
+summary(terror.glm7)
+
+gtd4$MiddleEast <- ifelse(gtd4$region=="Middle East/NA", 1, 0)
+gtd4$Asia <- ifelse(gtd4$region=="Asia", 1, 0)
+
+```
+
+taking out those insignifican terms for Poisson regression
+
+```{r}
+terror.glm8 <- glm(nkill ~ logperps + MiddleEast + Asia + FacilityAttack + Hijacking + Kidnapping + Firearms + Fire + Knives + WeaponOther + logperps*Firearms + logperps*Fire + logperps*Knives + logperps*WeaponOther + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = quasipoisson)
+summary(terror.glm8)
+anova(terror.glm8, terror.glm7, test = "F")
+```
+
+Anova test doesn't want us to take out those insignificant regions, so we'd keep them in.
+Now take out Kidnapping
+
+```{r}
+terror.glm9 <- glm(nkill ~ logperps + region + FacilityAttack + Kidnapping + Firearms + Fire + Knives + WeaponOther + logperps*Firearms + logperps*Fire + logperps*Knives + logperps*WeaponOther + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = quasipoisson)
+summary(terror.glm9)
+anova(terror.glm9, terror.glm8, test = "F")
+```
+
+Keep the reduced model.
+Now take out logperps*Fire
+
+```{r}
+terror.glm10 <- glm(nkill ~ logperps + region + FacilityAttack + Kidnapping + Firearms + Fire + Knives + WeaponOther  + logperps*Fire + logperps*Knives + logperps*WeaponOther + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = quasipoisson)
+summary(terror.glm10)
+anova(terror.glm10, terror.glm9, test = "F")
+```
+
+Keep the interaction term in, and the term Fire. 
+Now try taking out logperps*WeaponOther
+
+```{r}
+terror.glm11 <- glm(nkill ~ logperps + region + FacilityAttack + Kidnapping + Firearms + Fire + Knives + WeaponOther  + logperps*Fire + logperps*Knives + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = quasipoisson)
+summary(terror.glm11)
+anova(terror.glm11, terror.glm10, test = "F")
+```
+
+```{r}
+gtd4$SSAfrica <- ifelse(gtd4$region=="SS Africa", 1, 0)
+terror.glm12 <- glm(nkill ~ logperps + SSAfrica + MiddleEast + Asia + FacilityAttack + Kidnapping + Firearms + Fire + Knives + WeaponOther  + logperps*Fire + logperps*Knives + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd4, family = quasipoisson)
+anova(terror.glm12, terror.glm11, test = "F")
+summary(terror.glm12)
+```
+Keep the reduced model 12.
+Now we've reached our final model, since we've taken out those insignificant*anova-permitted terms HOORAY~~
+
+DIAGNOSTICS TIME :)
+
+```{r}
+library(car)
+vif(terror.glm12)
+```
+
+None of the term's VIF is greater than 10, we're happy with our multicollinearity test.
+
+Now for Cook's distance
+```{r}
+plot(terror.glm12, which = 4)
+```
+
+None of our data has a Cook's distance greater than 1, beautiful.
+
+Now residual time
+
+```{r}
+#Residuals
+plot(terror.glm12, which = 1) #residuals v. fitted
+```
+
+Since a large amount of our predicted means are less than 5, our distributions of residuals is not approximately normal (which makes sense). So in this case, we'll just use the residual plot to spot outliers. From the residual plot, point 16948, 31908 and 39392 are the most "outlied", so we try to take them out.
+
+```{r}
+gtd5 <- gtd4[-c(which(resid(terror.glm12)>15)),]
+nrow(gtd5)
+nrow(gtd4)
+terror.glm13 <- glm(nkill ~ logperps + SSAfrica + MiddleEast + Asia + FacilityAttack + Kidnapping + Firearms + Fire + Knives + WeaponOther  + logperps*Fire + logperps*Knives + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd5, family = quasipoisson)
+```
+```{r}
+plot(terror.glm13, which = 1) #residuals v. fitted(2)
+gtd6 <- gtd5[-c(which(resid(terror.glm12)>14)),]
+```
+```{r}
+terror.glm14 <- glm(nkill ~ logperps + SSAfrica + MiddleEast + Asia + FacilityAttack + Kidnapping + Firearms + Fire + Knives + WeaponOther  + logperps*Fire + logperps*Knives + PoliceMilitary + VictimOther + Unknown + Govt + PolParties + Business + Transportation, data = gtd6, family = quasipoisson)
+plot(terror.glm14, which = 1) #residuals v. fitted
+```
+
+We choose to stick with terror.glm12 because even when we remove outliers based on the residual plot, we get more.
